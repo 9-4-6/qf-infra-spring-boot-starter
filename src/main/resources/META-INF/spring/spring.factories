@@ -1,0 +1,2 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+com.qf.infra.rocketmq.config.QfRocketMQAutoConfiguration

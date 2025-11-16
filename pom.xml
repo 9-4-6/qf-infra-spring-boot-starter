@@ -16,7 +16,7 @@
 
     <properties>
         <java.version>17</java.version>
-        <rocketmq-spring-boot-starter.version>2.2.3</rocketmq-spring-boot-starter.version>
+        <rocketmq-spring-boot-starter.version>2.3.2</rocketmq-spring-boot-starter.version>
         <mybatis-plus.version>3.5.3.1</mybatis-plus.version>
     </properties>
     <dependencies>
@@ -63,6 +63,12 @@
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
             <scope>runtime</scope>
+            <optional>true</optional>
+        </dependency>
+        <!-- 6. AOP 依赖（消费者增强） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
             <optional>true</optional>
         </dependency>
     </dependencies>
