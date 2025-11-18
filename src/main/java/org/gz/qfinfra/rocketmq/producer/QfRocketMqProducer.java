@@ -2,30 +2,31 @@ package org.gz.qfinfra.rocketmq.producer;
 
 
 import jakarta.annotation.Resource;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.gz.qfinfra.rocketmq.callback.MessageSendCallback;
-import org.gz.qfinfra.rocketmq.config.QfRocketMQProperties;
+import org.gz.qfinfra.rocketmq.config.QfRocketMqProperties;
+import org.gz.qfinfra.rocketmq.entity.SendR;
 import org.gz.qfinfra.rocketmq.util.JsonUtil;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.messaging.Message;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
+
+/**
+ * @author guozhong
+ */
 @Slf4j
 @Component
-public class QfRocketMQProducer {
+public class QfRocketMqProducer {
     @Resource
-    private  RocketMQTemplate rocketMQTemplate;
-    private final QfRocketMQProperties.Producer producerConfig;
+    private  RocketMQTemplate rocketMqTemplate;
 
-    // 初始化（构造函数注入配置）
-    public QfRocketMQProducer(QfRocketMQProperties.Producer producer) {
-        this.producerConfig = producer;
+    private final QfRocketMqProperties qfRocketMqProperties;
+    public QfRocketMqProducer(QfRocketMqProperties properties) {
+        this.qfRocketMqProperties = properties;
     }
 
     /**
@@ -40,12 +41,13 @@ public class QfRocketMQProducer {
             Message<?> springMessage = buildMessage(message);
 
             // 调用 RocketMQ 同步发送（使用配置的超时时间）
-            SendResult sendResult = rocketMQTemplate.syncSend(
-                    topic, springMessage, producerConfig.getSendTimeout(), producerConfig.getRetryTimes()
+            SendResult sendResult = rocketMqTemplate.syncSend(
+                    topic, springMessage, qfRocketMqProperties.getProducerSendTimeout(),
+                    qfRocketMqProperties.getProducerRetryTimes()
             );
 
             // 封装结果并回调
-            MessageSendCallback.SendResult result = buildSendResult(topic, sendResult);
+            SendR result = buildSendResult(topic, sendResult);
             callback.onSuccess(result);
             log.info("[同步发送] 成功，result={}", JsonUtil.toJson(result));
         } catch (Throwable ex) {
@@ -66,10 +68,10 @@ public class QfRocketMQProducer {
                 Message<?> springMessage = buildMessage(message);
 
                 // 调用 RocketMQ 异步发送
-                rocketMQTemplate.asyncSend(topic, springMessage, new SendCallback() {
+                rocketMqTemplate.asyncSend(topic, springMessage, new SendCallback() {
                     @Override
                     public void onSuccess(SendResult sendResult) {
-                        MessageSendCallback.SendResult result = buildSendResult(topic, sendResult);
+                        SendR result = buildSendResult(topic, sendResult);
                         callback.onSuccess(result);
                         log.info("[异步发送] 成功，result={}", JsonUtil.toJson(result));
                     }
@@ -79,7 +81,8 @@ public class QfRocketMQProducer {
                         log.error("[异步发送] 失败，topic={}, message={}", topic, JsonUtil.toJson(message), ex);
                         callback.onFailure(ex);
                     }
-                }, producerConfig.getSendTimeout(), producerConfig.getRetryTimes());
+                }, qfRocketMqProperties.getProducerSendTimeout(),
+                        qfRocketMqProperties.getProducerRetryTimes());
             } catch (Throwable ex) {
                 log.error("[异步发送] 提交失败，topic={}, message={}", topic, JsonUtil.toJson(message), ex);
                 callback.onFailure(ex);
@@ -101,11 +104,10 @@ public class QfRocketMQProducer {
             Message<?> springMessage = buildMessage(message);
 
             // 调用 RocketMQ 顺序发送
-            SendResult sendResult = rocketMQTemplate.syncSendOrderly(
-                    topic, springMessage, shardingKey, producerConfig.getSendTimeout()
-            );
+            SendResult sendResult = rocketMqTemplate.syncSendOrderly(
+                    topic, springMessage, shardingKey, qfRocketMqProperties.getProducerSendTimeout());
 
-            MessageSendCallback.SendResult result = buildSendResult(topic, sendResult);
+            SendR result = buildSendResult(topic, sendResult);
             callback.onSuccess(result);
             log.info("[顺序发送] 成功，result={}", JsonUtil.toJson(result));
         } catch (Throwable ex) {
@@ -127,12 +129,12 @@ public class QfRocketMQProducer {
     /**
      * 封装发送结果
      */
-    private MessageSendCallback.SendResult buildSendResult(String topic, SendResult sendResult) {
+    private SendR buildSendResult(String topic, SendResult sendResult) {
         String[] topicTag = topic.split(":");
         String pureTopic = topicTag[0];
         String tag = topicTag.length > 1 ? topicTag[1] : "";
 
-        return new MessageSendCallback.SendResult(
+        return new SendR(
                 sendResult.getMsgId(),
                 pureTopic,
                 tag,

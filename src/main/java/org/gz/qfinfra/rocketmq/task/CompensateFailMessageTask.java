@@ -4,9 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.gz.qfinfra.rocketmq.callback.MessageSendCallback;
-import org.gz.qfinfra.rocketmq.config.QfRocketMQProperties;
+import org.gz.qfinfra.rocketmq.config.QfRocketMqProperties;
 import org.gz.qfinfra.rocketmq.entity.RocketmqFailMessage;
-import org.gz.qfinfra.rocketmq.producer.QfRocketMQProducer;
+import org.gz.qfinfra.rocketmq.entity.SendR;
+import org.gz.qfinfra.rocketmq.producer.QfRocketMqProducer;
 import org.gz.qfinfra.rocketmq.repository.RocketmqFailMessageMapper;
 import org.gz.qfinfra.rocketmq.util.JsonUtil;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -14,27 +15,31 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+/**
+ * @author guozhong
+ */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class CompensateFailMessageTask {
-    private final QfRocketMQProducer rocketMQProducer;
-    private final QfRocketMQProperties.Compensate compensateConfig;
+    private final QfRocketMqProducer rocketMQProducer;
+    private final QfRocketMqProperties compensateConfig;
 
     private final RocketmqFailMessageMapper failMessageMapper;
+
     /**
      * 定时补偿失败消息（按配置的 cron 表达式执行）
      */
     @Scheduled(cron = "${qf.infra.rocketmq.compensate.cron:0 0/5 * * * ?}")
     @Transactional(rollbackFor = Exception.class)
     public void compensateFailMessage() {
-        log.info("[消息补偿] 开始执行补偿任务，批次大小={}", compensateConfig.getBatchSize());
+        log.info("[消息补偿] 开始执行补偿任务，批次大小={}", compensateConfig.getCompensateBatchSize());
 
         // 查询待补偿消息：状态0（待补偿）、已重试次数 < 最大重试次数
         LambdaQueryWrapper<RocketmqFailMessage> queryWrapper = new LambdaQueryWrapper<RocketmqFailMessage>()
                 .eq(RocketmqFailMessage::getStatus, 0)
                 .lt(RocketmqFailMessage::getRetryCount, 5)
-                .last("LIMIT " + compensateConfig.getBatchSize());
+                .last("LIMIT " + compensateConfig.getCompensateBatchSize());
 
         List<RocketmqFailMessage> failMessages = failMessageMapper.selectList(queryWrapper);
         log.info("[消息补偿] 待补偿消息数量：{}", failMessages.size());
@@ -55,7 +60,7 @@ public class CompensateFailMessageTask {
                     // 顺序消息补偿
                     rocketMQProducer.sendOrderly(topic, messageBody, failMsg.getShardingKey(), new MessageSendCallback() {
                         @Override
-                        public void onSuccess(MessageSendCallback.SendResult result) {
+                        public void onSuccess(SendR result) {
                             updateMessageStatus(failMsg.getId(), 2, "补偿成功");
                             log.info("[消息补偿] 顺序消息补偿成功，id={}, messageId={}", failMsg.getId(), failMsg.getMessageId());
                         }
@@ -70,7 +75,7 @@ public class CompensateFailMessageTask {
                     // 普通消息补偿（同步发送）
                     rocketMQProducer.sendSync(topic, messageBody, new MessageSendCallback() {
                         @Override
-                        public void onSuccess(SendResult result) {
+                        public void onSuccess(SendR result) {
                             updateMessageStatus(failMsg.getId(), 2, "补偿成功");
                             log.info("[消息补偿] 普通消息补偿成功，id={}, messageId={}", failMsg.getId(), failMsg.getMessageId());
                         }
@@ -95,7 +100,6 @@ public class CompensateFailMessageTask {
     /**
      * 更新消息状态
      */
-    @Transactional(rollbackFor = Exception.class)
     void updateMessageStatus(Long id, Integer status, String errorMsg) {
         RocketmqFailMessage updateMsg = new RocketmqFailMessage();
         updateMsg.setId(id);

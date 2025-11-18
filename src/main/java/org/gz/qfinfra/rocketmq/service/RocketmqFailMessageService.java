@@ -1,5 +1,6 @@
 package org.gz.qfinfra.rocketmq.service;
 
+import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -8,11 +9,14 @@ import org.gz.qfinfra.rocketmq.repository.RocketmqFailMessageMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * @author 17853
+ */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class RocketmqFailMessageService {
-    private final RocketmqFailMessageMapper failMessageMapper;
+    @Resource
+    private  RocketmqFailMessageMapper failMessageMapper;
 
 
     /**

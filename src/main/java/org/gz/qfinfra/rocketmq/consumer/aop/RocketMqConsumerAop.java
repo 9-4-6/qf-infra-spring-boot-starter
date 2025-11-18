@@ -1,6 +1,6 @@
 package org.gz.qfinfra.rocketmq.consumer.aop;
 
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
 import org.apache.rocketmq.client.consumer.listener.ConsumeOrderlyStatus;
@@ -9,9 +9,8 @@ import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
-import org.aspectj.lang.reflect.MethodSignature;
-import org.gz.qfinfra.rocketmq.config.QfRocketMQProperties;
-import org.gz.qfinfra.rocketmq.consumer.annotation.QfRocketMQMessageListener;
+import org.gz.qfinfra.rocketmq.config.QfRocketMqProperties;
+import org.gz.qfinfra.rocketmq.consumer.annotation.QfRocketMqMessageListener;
 import org.gz.qfinfra.rocketmq.entity.RocketmqFailMessage;
 import org.gz.qfinfra.rocketmq.service.RocketmqFailMessageService;
 import org.gz.qfinfra.rocketmq.util.JsonUtil;
@@ -20,13 +19,19 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * @author guozhong
+ */
 @Slf4j
 @Aspect
 @Component
-@RequiredArgsConstructor
-public class RocketMQConsumerAop {
-    private final RocketmqFailMessageService failMessageService;
-    private final QfRocketMQProperties.Consumer consumerConfig;
+public class RocketMqConsumerAop {
+    @Resource
+    private  RocketmqFailMessageService failMessageService;
+    private final QfRocketMqProperties qfRocketMqProperties;
+    public RocketMqConsumerAop(QfRocketMqProperties properties) {
+        this.qfRocketMqProperties = properties;
+    }
 
     /**
      * 环绕增强：拦截类上标注 @QfRocketMQMessageListener 且方法名为 onMessage 的方法
@@ -37,21 +42,22 @@ public class RocketMQConsumerAop {
     public Object aroundConsumer(ProceedingJoinPoint joinPoint) throws Throwable {
 
         // 关键修改：从目标类上获取注解（因为注解修饰的是类）
-        QfRocketMQMessageListener annotation = joinPoint.getTarget().getClass()
-                .getAnnotation(QfRocketMQMessageListener.class);
+        QfRocketMqMessageListener annotation = joinPoint.getTarget().getClass()
+                .getAnnotation(QfRocketMqMessageListener.class);
 
         if (annotation == null) {
             log.warn("[消费者AOP] 未找到 @QfRocketMQMessageListener 注解，直接执行原方法");
             return joinPoint.proceed();
         }
 
-        // 1. 解析配置（注解配置优先，无则用全局配置）
+        // 1. 解析配置（注解配置优先，无则用全局配置）最大重试次数
         int maxRetryTimes = annotation.maxRetryTimes() > 0 ?
-                annotation.maxRetryTimes() : consumerConfig.getMaxRetryTimes();
+                annotation.maxRetryTimes() : qfRocketMqProperties.getConsumerMaxRetryTimes();
+        // 2.重试次数
         long retryInterval = annotation.retryInterval() > 0 ?
-                annotation.retryInterval() : consumerConfig.getRetryInterval();
+                annotation.retryInterval() : qfRocketMqProperties.getProducerRetryTimes();
 
-        // 2. 解析消息参数（RocketMQListener 的 onMessage 方法参数通常是 T 或 MessageExt）
+        // 3. 解析消息参数（RocketMQListener 的 onMessage 方法参数通常是 T 或 MessageExt）
         Object[] args = joinPoint.getArgs();
         List<MessageExt> messageExtList = parseMessageArgs(args);
         if (messageExtList == null || messageExtList.isEmpty()) {
@@ -121,7 +127,7 @@ public class RocketMQConsumerAop {
     /**
      * 保存失败消息到 MySQL
      */
-    private void saveFailMessages(QfRocketMQMessageListener annotation, List<MessageExt> messageExtList, Throwable ex) {
+    private void saveFailMessages(QfRocketMqMessageListener annotation, List<MessageExt> messageExtList, Throwable ex) {
         for (MessageExt messageExt : messageExtList) {
             RocketmqFailMessage failMessage = new RocketmqFailMessage();
             failMessage.setMessageId(messageExt.getMsgId());
@@ -129,9 +135,10 @@ public class RocketMQConsumerAop {
             failMessage.setTag(annotation.tag());
             failMessage.setMessageBody(new String(messageExt.getBody()));
             failMessage.setShardingKey(messageExt.getKeys());
-            failMessage.setRetryCount(annotation.maxRetryTimes() > 0 ? annotation.maxRetryTimes() : consumerConfig.getMaxRetryTimes());
+            failMessage.setRetryCount(annotation.maxRetryTimes() > 0 ? annotation.maxRetryTimes() : qfRocketMqProperties.getConsumerMaxRetryTimes());
             failMessage.setMaxRetryCount(failMessage.getRetryCount());
-            failMessage.setStatus(0); // 0-待补偿
+            // 0-待补偿
+            failMessage.setStatus(0);
             failMessage.setErrorMsg(ex.getMessage());
             failMessage.setCreateTime(LocalDateTime.now());
             failMessage.setUpdateTime(LocalDateTime.now());
@@ -143,7 +150,7 @@ public class RocketMQConsumerAop {
     /**
      * 构建默认消费结果（根据消费模式返回对应状态）
      */
-    private Object buildDefaultConsumeResult(QfRocketMQMessageListener annotation) {
+    private Object buildDefaultConsumeResult(QfRocketMqMessageListener annotation) {
         if (annotation.consumeMode() == ConsumeMode.ORDERLY) {
             return ConsumeOrderlyStatus.SUSPEND_CURRENT_QUEUE_A_MOMENT;
         } else {
