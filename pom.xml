@@ -75,36 +75,13 @@
 
     <build>
         <plugins>
-            <!-- SpringBoot Starter 打包插件（关键） -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <!--安装到仓库后，引用时不出现 BOOT-INF文件夹（会导致找不到相关类）-->
                 <configuration>
-                    <!-- 禁止打包为可执行 JAR（Starter 是依赖库，不是应用） -->
-                    <executable>false</executable>
-                    <!-- 排除不必要的依赖（避免重复打包） -->
-                    <excludes>
-                        <exclude>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </exclude>
-                    </excludes>
+                    <skip>true</skip>
                 </configuration>
-                <executions>
-                    <execution>
-                        <goals>
-                            <!-- 生成 spring-boot-starter 专属的 MANIFEST.MF -->
-                            <goal>repackage</goal>
-                        </goals>
-                        <configuration>
-                            <classifier>exec</classifier> <!-- 区分可执行 JAR 和依赖 JAR -->
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
         </plugins>
     </build>
