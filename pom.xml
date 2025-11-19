@@ -34,7 +34,6 @@
             <groupId>org.apache.rocketmq</groupId>
             <artifactId>rocketmq-spring-boot-starter</artifactId>
             <version>${rocketmq-spring-boot-starter.version}</version>
-            <!-- 不传递依赖，由外部项目自行指定版本（避免冲突） -->
             <optional>true</optional>
         </dependency>
         <dependency>
@@ -69,6 +68,12 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-aop</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>cn.hutool</groupId>
+            <artifactId>hutool-all</artifactId>
+            <version>5.8.28</version>
             <optional>true</optional>
         </dependency>
     </dependencies>

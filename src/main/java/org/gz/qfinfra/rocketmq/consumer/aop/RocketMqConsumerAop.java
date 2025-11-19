@@ -1,5 +1,6 @@
 package org.gz.qfinfra.rocketmq.consumer.aop;
 
+import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.consumer.listener.ConsumeConcurrentlyStatus;
@@ -13,8 +14,6 @@ import org.gz.qfinfra.rocketmq.config.QfRocketMqProperties;
 import org.gz.qfinfra.rocketmq.consumer.annotation.QfRocketMqMessageListener;
 import org.gz.qfinfra.rocketmq.entity.RocketmqFailMessage;
 import org.gz.qfinfra.rocketmq.service.RocketmqFailMessageService;
-import org.gz.qfinfra.rocketmq.util.JsonUtil;
-import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -67,7 +66,7 @@ public class RocketMqConsumerAop {
         // 3. 打印消费日志
         log.info("[消费者] 开始消费，topic={}, tag={}, consumerGroup={}, 消息数量={}, 消息详情={}",
                 annotation.topic(), annotation.tag(), annotation.consumerGroup(),
-                messageExtList.size(), JsonUtil.toJson(messageExtList.stream().map(MessageExt::getBody).toList()));
+                messageExtList.size(), JSONUtil.toJsonStr(messageExtList.stream().map(MessageExt::getBody).toList()));
 
         // 4. 重试逻辑
         int currentRetry = 0;

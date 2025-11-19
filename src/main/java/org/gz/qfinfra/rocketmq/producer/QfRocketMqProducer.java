@@ -1,6 +1,7 @@
 package org.gz.qfinfra.rocketmq.producer;
 
 
+import cn.hutool.json.JSONUtil;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.rocketmq.client.producer.SendCallback;
@@ -9,7 +10,6 @@ import org.apache.rocketmq.spring.core.RocketMQTemplate;
 import org.gz.qfinfra.rocketmq.callback.MessageSendCallback;
 import org.gz.qfinfra.rocketmq.config.QfRocketMqProperties;
 import org.gz.qfinfra.rocketmq.entity.SendR;
-import org.gz.qfinfra.rocketmq.util.JsonUtil;
 import org.springframework.messaging.support.MessageBuilder;
 import org.springframework.messaging.Message;
 
@@ -35,7 +35,7 @@ public class QfRocketMqProducer {
      */
     public void sendSync(String topic, Object message, MessageSendCallback callback) {
         try {
-            log.info("[同步发送] 开始发送，topic={}, message={}", topic, JsonUtil.toJson(message));
+            log.info("[同步发送] 开始发送，topic={}, message={}", topic, JSONUtil.toJsonStr(message));
             Message<?> springMessage = buildMessage(message);
 
             // 调用 RocketMQ 同步发送（使用配置的超时时间）
@@ -47,9 +47,9 @@ public class QfRocketMqProducer {
             // 封装结果并回调
             SendR result = buildSendResult(topic, sendResult);
             callback.onSuccess(result);
-            log.info("[同步发送] 成功，result={}", JsonUtil.toJson(result));
+            log.info("[同步发送] 成功，result={}", JSONUtil.toJsonStr(result));
         } catch (Throwable ex) {
-            log.error("[同步发送] 失败，topic={}, message={}", topic, JsonUtil.toJson(message), ex);
+            log.error("[同步发送] 失败，topic={}, message={}", topic, JSONUtil.toJsonStr(message), ex);
             callback.onFailure(ex);
         }
     }
@@ -62,7 +62,7 @@ public class QfRocketMqProducer {
      */
     public void sendAsync(String topic, Object message, MessageSendCallback callback) {
             try {
-                log.info("[异步发送] 开始发送，topic={}, message={}", topic, JsonUtil.toJson(message));
+                log.info("[异步发送] 开始发送，topic={}, message={}", topic, JSONUtil.toJsonStr(message));
                 Message<?> springMessage = buildMessage(message);
 
                 // 调用 RocketMQ 异步发送
@@ -71,18 +71,18 @@ public class QfRocketMqProducer {
                     public void onSuccess(SendResult sendResult) {
                         SendR result = buildSendResult(topic, sendResult);
                         callback.onSuccess(result);
-                        log.info("[异步发送] 成功，result={}", JsonUtil.toJson(result));
+                        log.info("[异步发送] 成功，result={}", JSONUtil.toJsonStr(result));
                     }
 
                     @Override
                     public void onException(Throwable ex) {
-                        log.error("[异步发送] 失败，topic={}, message={}", topic, JsonUtil.toJson(message), ex);
+                        log.error("[异步发送] 失败，topic={}, message={}", topic, JSONUtil.toJsonStr(message), ex);
                         callback.onFailure(ex);
                     }
                 }, qfRocketMqProperties.getProducerSendTimeout(),
                         qfRocketMqProperties.getProducerRetryTimes());
             } catch (Throwable ex) {
-                log.error("[异步发送] 提交失败，topic={}, message={}", topic, JsonUtil.toJson(message), ex);
+                log.error("[异步发送] 提交失败，topic={}, message={}", topic, JSONUtil.toJsonStr(message), ex);
                 callback.onFailure(ex);
             }
 
@@ -98,7 +98,7 @@ public class QfRocketMqProducer {
     public void sendOrderly(String topic, Object message, String shardingKey, MessageSendCallback callback) {
         try {
             log.info("[顺序发送] 开始发送，topic={}, shardingKey={}, message={}",
-                    topic, shardingKey, JsonUtil.toJson(message));
+                    topic, shardingKey, JSONUtil.toJsonStr(message));
             Message<?> springMessage = buildMessage(message);
 
             // 调用 RocketMQ 顺序发送
@@ -107,10 +107,10 @@ public class QfRocketMqProducer {
 
             SendR result = buildSendResult(topic, sendResult);
             callback.onSuccess(result);
-            log.info("[顺序发送] 成功，result={}", JsonUtil.toJson(result));
+            log.info("[顺序发送] 成功，result={}", JSONUtil.toJsonStr(result));
         } catch (Throwable ex) {
             log.error("[顺序发送] 失败，topic={}, shardingKey={}, message={}",
-                    topic, shardingKey, JsonUtil.toJson(message), ex);
+                    topic, shardingKey, JSONUtil.toJsonStr(message), ex);
             callback.onFailure(ex);
         }
     }
@@ -119,7 +119,7 @@ public class QfRocketMqProducer {
      * 构建 Spring Message（统一JSON序列化）
      */
     private Message<?> buildMessage(Object message) {
-        return MessageBuilder.withPayload(JsonUtil.toJson(message))
+        return MessageBuilder.withPayload(JSONUtil.toJsonStr(message))
                 .setHeader("content-type", "application/json")
                 .build();
     }

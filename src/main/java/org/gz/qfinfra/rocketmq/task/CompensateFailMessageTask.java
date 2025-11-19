@@ -1,5 +1,6 @@
 package org.gz.qfinfra.rocketmq.task;
 
+import cn.hutool.json.JSONUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.gz.qfinfra.rocketmq.callback.MessageSendCallback;
 import org.gz.qfinfra.rocketmq.config.QfRocketMqProperties;
@@ -7,7 +8,6 @@ import org.gz.qfinfra.rocketmq.entity.RocketmqFailMessage;
 import org.gz.qfinfra.rocketmq.entity.SendR;
 import org.gz.qfinfra.rocketmq.producer.QfRocketMqProducer;
 import org.gz.qfinfra.rocketmq.service.RocketmqFailMessageService;
-import org.gz.qfinfra.rocketmq.util.JsonUtil;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,8 +51,7 @@ public class CompensateFailMessageTask {
 
                 // 构建主题（topic:tag）
                 String topic = failMsg.getTopic() + (failMsg.getTag().isEmpty() ? "" : ":" + failMsg.getTag());
-                Object messageBody = JsonUtil.fromJson(failMsg.getMessageBody(), Object.class);
-
+                Object messageBody = JSONUtil.toBean(failMsg.getMessageBody(), Object.class);
                 // 区分顺序消息和普通消息补偿
                 if (failMsg.getShardingKey() != null && !failMsg.getShardingKey().isEmpty()) {
                     // 顺序消息补偿
