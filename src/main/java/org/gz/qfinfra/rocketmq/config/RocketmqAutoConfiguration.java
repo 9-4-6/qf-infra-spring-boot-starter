@@ -7,7 +7,6 @@ import org.gz.qfinfra.rocketmq.service.RocketmqFailMessageService;
 import org.gz.qfinfra.rocketmq.service.impl.RocketmqFailMessageServiceImpl;
 import org.gz.qfinfra.rocketmq.task.RocketmqCompensateTask;
 import org.mybatis.spring.annotation.MapperScan;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -21,10 +20,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @ConditionalOnProperty(name = "rocketmq.qf.enabled", havingValue = "true")
 // 启用自定义属性配置
 @EnableConfigurationProperties(RocketmqProperties.class)
-// 仅当RocketMQTemplate存在时生效（确保引入了RocketMQ依赖）
-@ConditionalOnClass(RocketMQTemplate.class)
 // 扫描Mapper接口（MyBatis-Plus）
-@MapperScan("com.qf.rocketmq.mapper")
+@MapperScan("org.gz.qfinfra.rocketmq.mapper")
 // 开启定时任务
 @EnableScheduling
 public class RocketmqAutoConfiguration {
