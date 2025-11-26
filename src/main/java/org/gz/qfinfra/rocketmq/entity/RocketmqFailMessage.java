@@ -12,14 +12,14 @@ import java.time.LocalDateTime;
 public class RocketmqFailMessage {
     @TableId(type = IdType.AUTO)
     private Long id;
+    private String msgId; // RocketMQ消息ID
     private String msgTopic; // 消息主题
     private String msgTags; // 消息标签
     private String msgKeys; // 消息Key
     private String msgBody; // 消息体
-    private String msgId; // RocketMQ消息ID
     private Integer retryCount; // 已补偿次数
-    private Integer maxRetryCount; // 最大补偿次数
     private Integer status; // 状态：0-待补偿 1-成功 2-失败
+    private String failReason;
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
 }

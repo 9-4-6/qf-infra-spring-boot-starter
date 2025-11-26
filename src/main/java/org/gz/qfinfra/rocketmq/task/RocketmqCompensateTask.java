@@ -1,90 +1,119 @@
 package org.gz.qfinfra.rocketmq.task;
 
 import lombok.extern.slf4j.Slf4j;
-import org.gz.qfinfra.rocketmq.callback.RocketmqSendFailCallback;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.rocketmq.common.message.MessageExt;
+import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.gz.qfinfra.rocketmq.config.RocketmqProperties;
+import org.gz.qfinfra.rocketmq.consumer.aop.RocketmqConsumerAop;
 import org.gz.qfinfra.rocketmq.entity.RocketmqFailMessage;
-import org.gz.qfinfra.rocketmq.producer.RocketmqProducer;
 import org.gz.qfinfra.rocketmq.service.RocketmqFailMessageService;
+
 import org.springframework.scheduling.annotation.Scheduled;
 
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+
 /**
  * @author guozhong
  * RocketMQ失败消息补偿任务
  */
 @Slf4j
 public class RocketmqCompensateTask {
+
+    private Map<String, RocketMQListener> topicHandlerMapping;
     private RocketmqFailMessageService failMessageService;
-    private RocketmqProducer rocketmqProducer;
-    private String compensateCron;
+    private RocketmqProperties rocketmqProperties;
 
-    // 通过setter注入依赖和属性
-    public void setFailMessageService(RocketmqFailMessageService failMessageService) {
+    public RocketmqCompensateTask(RocketmqConsumerAop aop,
+                                  RocketmqFailMessageService failMessageService,
+                                  RocketmqProperties rocketmqProperties) {
+        this.topicHandlerMapping = aop.topicHandlerMapping;
         this.failMessageService = failMessageService;
+        this.rocketmqProperties = rocketmqProperties;
     }
 
-    public void setRocketmqProducer(RocketmqProducer rocketmqProducer) {
-        this.rocketmqProducer = rocketmqProducer;
-    }
 
-    public void setRocketmqProperties(RocketmqProperties rocketmqProperties) {
-        this.compensateCron = rocketmqProperties.getCompensateCron();
-    }
 
-    /**
-     * 定时补偿任务（Cron表达式从配置中获取）
-     */
-    @Scheduled(cron = "${compensateCron:0/10 * * * * ?}")
-    public void compensateFailMessage() {
-        log.info("开始执行RocketMQ失败消息补偿任务");
-        List<RocketmqFailMessage> failMessages = failMessageService.listWaitCompensateMessage();
-        if (failMessages.isEmpty()) {
-            log.info("暂无待补偿的失败消息");
+    @Scheduled(cron = "0/30 * * * * ?")
+    public void executeCompensate() {
+        if (topicHandlerMapping.isEmpty()) {
+            log.debug("没有找到任何补偿Topic处理器，跳过补偿任务");
+            return;
+        }
+        //获取需要补偿的消息
+        List<RocketmqFailMessage> pendingMessages = failMessageService.listWaitCompensateMessage(rocketmqProperties.getBatchSize());
+        if (pendingMessages.isEmpty()) {
+            log.debug("没有待补偿的消息");
             return;
         }
 
-        for (RocketmqFailMessage failMessage : failMessages) {
-            Long id = failMessage.getId();
-            int currentRetryCount = failMessage.getRetryCount() + 1;
-            try {
-                // 重新发送消息
-                rocketmqProducer.sendSyncMessage(
-                        failMessage.getMsgTopic(),
-                        failMessage.getMsgTags(),
-                        failMessage.getMsgKeys(),
-                        failMessage.getMsgBody(),
-                        buildCompensateFailCallback(failMessage, currentRetryCount)
-                );
-                // 补偿成功，更新状态
-                failMessageService.updateCompensateStatus(id, 1, currentRetryCount);
-                log.info("失败消息补偿成功，ID：{}，主题：{}", id, failMessage.getMsgTopic());
-            } catch (Exception e) {
-                log.error("失败消息补偿异常，ID：{}，主题：{}", id, failMessage.getMsgTopic(), e);
-                // 判断是否超过最大补偿次数
-                if (currentRetryCount >= failMessage.getMaxRetryCount()) {
-                    failMessageService.updateCompensateStatus(id, 2, currentRetryCount); // 补偿失败
-                    log.warn("失败消息补偿次数超限，标记为补偿失败，ID：{}", id);
-                } else {
-                    failMessageService.updateCompensateStatus(id, 0, currentRetryCount); // 继续待补偿
-                }
+        log.info("开始补偿任务，待补偿消息数量: {}", pendingMessages.size());
+        int successCount = 0;
+        int failureCount = 0;
+        for (RocketmqFailMessage message : pendingMessages) {
+            if (processMessage(message)) {
+                successCount++;
+            } else {
+                failureCount++;
             }
         }
+
+        log.info("补偿任务完成，成功: {}，失败: {}，总计: {}", successCount, failureCount, pendingMessages.size());
     }
 
-    /**
-     * 构建补偿发送的失败回调
-     */
-    private RocketmqSendFailCallback buildCompensateFailCallback(RocketmqFailMessage failMessage, int currentRetryCount) {
-        return (msg, topic, tags, keys, e, sendResult) -> {
-            Long id = failMessage.getId();
-            if (currentRetryCount >= failMessage.getMaxRetryCount()) {
-                failMessageService.updateCompensateStatus(id, 2, currentRetryCount);
-                log.warn("补偿发送失败且次数超限，标记为补偿失败，ID：{}", id);
-            } else {
-                failMessageService.updateCompensateStatus(id, 0, currentRetryCount);
-                log.info("补偿发送失败，继续待补偿，ID：{}", id);
+    private boolean processMessage(RocketmqFailMessage message) {
+        String topic = message.getMsgTopic();
+        RocketMQListener handler = topicHandlerMapping.get(topic);
+
+        if (handler == null) {
+            log.warn("未找到Topic [{}] 对应的补偿处理器，消息ID: {}", topic, message.getMsgId());
+            markFailHandler(message,"未找到对应的补偿处理器");
+            return false;
+        }
+
+            log.debug("开始补偿消息，Topic: [{}], 消息ID: {}, 当前重试次数: {}",
+                    topic, message.getMsgId(), message.getRetryCount());
+            MessageExt msg = new MessageExt();
+            try{
+                byte[] bodyBytes = StringUtils.isNotBlank(message.getMsgBody()) ?
+                        message.getMsgBody().getBytes(StandardCharsets.UTF_8) : new byte[0];
+                msg.setBody(bodyBytes);
+                msg.setMsgId(message.getMsgId());
+                msg.setTopic(topic);
+                msg.setKeys(message.getMsgKeys());
+                msg.setTags(message.getMsgTags());
+                //业务处理
+                handler.onMessage(msg);
+                markAsSuccess(message);
+                log.info("消息补偿成功，Topic: [{}], 消息ID: {}", topic, message.getMsgId());
+                return true;
+            } catch (Exception e){
+                markFailHandler(message, "业务处理返回失败");
+                log.warn("消息补偿业务处理失败，Topic: [{}], 消息ID: {}", topic, message.getMsgId());
+                return false;
             }
-        };
+
+
     }
+
+    private void markAsSuccess(RocketmqFailMessage message) {
+        message.setStatus(1);
+        message.setFailReason(null);
+        message.setRetryCount(message.getRetryCount() + 1);
+        message.setUpdateTime(LocalDateTime.now());
+        failMessageService.updateMessageById(message);
+    }
+
+    private void markFailHandler(RocketmqFailMessage message,String failReason) {
+        //补偿失败
+        message.setStatus(2);
+        message.setFailReason(failReason);
+        message.setRetryCount(message.getRetryCount() + 1);
+        message.setUpdateTime(LocalDateTime.now());
+        failMessageService.updateMessageById(message);
+    }
+
 }

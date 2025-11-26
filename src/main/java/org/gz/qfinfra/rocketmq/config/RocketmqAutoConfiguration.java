@@ -18,25 +18,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @Configuration
 @ConditionalOnProperty(name = "rocketmq.qf.enabled", havingValue = "true")
-// 启用自定义属性配置
 @EnableConfigurationProperties(RocketmqProperties.class)
-// 扫描Mapper接口（MyBatis-Plus）
 @MapperScan("org.gz.qfinfra.rocketmq.mapper")
-// 开启定时任务
 @EnableScheduling
 public class RocketmqAutoConfiguration {
-    /**
-     * 注册消费者AOP拦截器
-     */
-    @Bean
-    public RocketmqConsumerAop rocketmqConsumerAop(RocketmqProperties rocketmqProperties,
-                                                   RocketmqFailMessageService failMessageService) {
-        RocketmqConsumerAop aop = new RocketmqConsumerAop();
-        aop.setConsumerMaxRetryTimes(rocketmqProperties.getConsumerMaxRetryTimes());
-        aop.setFailMessageService(failMessageService);
-        return aop;
-    }
-
     /**
      * 注册生产者封装类
      */
@@ -46,28 +31,28 @@ public class RocketmqAutoConfiguration {
         producer.setRocketMQTemplate(rocketMQTemplate);
         return producer;
     }
-
     /**
      * 注册失败消息服务
      */
     @Bean
-    public RocketmqFailMessageService rocketmqFailMessageService(RocketmqProperties rocketmqProperties) {
-        RocketmqFailMessageServiceImpl service = new RocketmqFailMessageServiceImpl();
-        service.setRocketmqProperties(rocketmqProperties);
-        return service;
+    public RocketmqFailMessageService rocketmqFailMessageService( ) {
+        return new RocketmqFailMessageServiceImpl();
     }
-
     /**
-     * 注册补偿定时任务
+     * 注册消费者AOP拦截器
      */
     @Bean
-    public RocketmqCompensateTask rocketmqCompensateTask(RocketmqFailMessageService failMessageService,
-                                                         RocketmqProducer rocketmqProducer,
-                                                         RocketmqProperties rocketmqProperties) {
-        RocketmqCompensateTask task = new RocketmqCompensateTask();
-        task.setFailMessageService(failMessageService);
-        task.setRocketmqProducer(rocketmqProducer);
-        task.setRocketmqProperties(rocketmqProperties);
-        return task;
+    public RocketmqConsumerAop rocketmqConsumerAop(RocketmqFailMessageService failMessageService) {
+        RocketmqConsumerAop aop = new RocketmqConsumerAop();
+        aop.setFailMessageService(failMessageService);
+        return aop;
+    }
+
+    @Bean
+    public RocketmqCompensateTask rocketmqCompensateTask(
+            RocketmqConsumerAop aop,
+            RocketmqFailMessageService failMessageService,
+            RocketmqProperties rocketmqProperties) {
+        return new RocketmqCompensateTask(aop,failMessageService,rocketmqProperties);
     }
 }

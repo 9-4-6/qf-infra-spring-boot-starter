@@ -13,10 +13,8 @@ public interface RocketmqFailMessageService {
     /**
      * 查询待补偿的消息
      */
-    List<RocketmqFailMessage> listWaitCompensateMessage();
+    List<RocketmqFailMessage> listWaitCompensateMessage(Integer batchSize);
 
-    /**
-     * 更新补偿状态
-     */
-    boolean updateCompensateStatus(Long id, Integer status, Integer retryCount);
+
+    void updateMessageById(RocketmqFailMessage message);
 }
