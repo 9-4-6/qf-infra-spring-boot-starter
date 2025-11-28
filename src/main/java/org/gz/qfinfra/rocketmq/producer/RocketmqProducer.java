@@ -1,7 +1,7 @@
 package org.gz.qfinfra.rocketmq.producer;
 
 
-import lombok.extern.slf4j.Slf4j;
+import lombok.Setter;
 import org.apache.rocketmq.client.producer.SendCallback;
 import org.apache.rocketmq.client.producer.SendResult;
 import org.apache.rocketmq.spring.core.RocketMQTemplate;
@@ -18,14 +18,35 @@ import org.springframework.util.Assert;
  * @author guozhong
  * RocketMQ生产者封装
  */
+@Setter
 public class RocketmqProducer {
     private static final Logger log = LoggerFactory.getLogger(RocketmqProducer.class);
 
-    private RocketMQTemplate rocketMQTemplate;
+    private RocketMQTemplate rocketMqTemplate;
 
-    // 通过setter注入RocketMQTemplate
-    public void setRocketMQTemplate(RocketMQTemplate rocketMQTemplate) {
-        this.rocketMQTemplate = rocketMQTemplate;
+
+
+    public <T> void sendSyncMessage(String topic, T msg, RocketmqSendFailCallback failCallback) {
+        this.doSendSyncMessage(topic, null, null, msg,  failCallback);
+    }
+    public <T> void sendSyncMessage(String topic,String tags,T msg, RocketmqSendFailCallback failCallback) {
+        this.doSendSyncMessage(topic, tags, null, msg,  failCallback);
+    }
+
+    public <T> void sendSyncMessage(String topic,String tags, String keys,T msg, RocketmqSendFailCallback failCallback) {
+        this.doSendSyncMessage(topic, tags, keys, msg, failCallback);
+    }
+
+
+    public <T> void sendAsyncMessage(String topic, T msg, RocketmqSendFailCallback failCallback) {
+        this.doSendAsyncMessage(topic, null, null, msg,  failCallback);
+    }
+    public <T> void sendAsyncMessage(String topic,String tags,T msg, RocketmqSendFailCallback failCallback) {
+        this.doSendAsyncMessage(topic, tags, null, msg,  failCallback);
+    }
+
+    public <T> void sendAsyncMessage(String topic,String tags, String keys,T msg, RocketmqSendFailCallback failCallback) {
+        this.doSendAsyncMessage(topic, tags, keys, msg, failCallback);
     }
 
     /**
@@ -36,14 +57,14 @@ public class RocketmqProducer {
      * @param msg 消息体
      * @param failCallback 失败回调
      */
-    public <T> void sendSyncMessage(String topic, String tags, String keys, T msg, RocketmqSendFailCallback failCallback) {
+    public <T> void doSendSyncMessage(String topic, String tags, String keys, T msg, RocketmqSendFailCallback failCallback) {
         Assert.hasText(topic, "消息主题不能为空");
         Assert.notNull(msg, "消息体不能为空");
 
         String destination = buildDestination(topic, tags);
         try {
             Message<T> message = buildMessage(msg, keys);
-            SendResult sendResult = rocketMQTemplate.syncSend(destination, message);
+            SendResult sendResult = rocketMqTemplate.syncSend(destination, message);
             if (sendResult.getSendStatus() != org.apache.rocketmq.client.producer.SendStatus.SEND_OK) {
                 log.error("同步发送消息失败，主题：{}，标签：{}，Key：{}，结果：{}", topic, tags, keys, sendResult);
                 failCallback.onFail(msg, topic, tags, keys, new RuntimeException("发送状态非SEND_OK"), sendResult);
@@ -55,21 +76,20 @@ public class RocketmqProducer {
     }
 
     /**
-     * 异步发送消息
      * @param topic 主题
      * @param tags 标签
      * @param keys 消息Key
      * @param msg 消息体
      * @param failCallback 失败回调
      */
-    public <T> void sendAsyncMessage(String topic, String tags, String keys, T msg, RocketmqSendFailCallback failCallback) {
+    private  <T> void doSendAsyncMessage(String topic, String tags, String keys, T msg, RocketmqSendFailCallback failCallback) {
         Assert.hasText(topic, "消息主题不能为空");
         Assert.notNull(msg, "消息体不能为空");
 
         String destination = buildDestination(topic, tags);
         try {
             Message<T> message = buildMessage(msg, keys);
-            rocketMQTemplate.asyncSend(destination, message, new SendCallback() {
+            rocketMqTemplate.asyncSend(destination, message, new SendCallback() {
                 @Override
                 public void onSuccess(SendResult sendResult) {
                     if (sendResult.getSendStatus() != org.apache.rocketmq.client.producer.SendStatus.SEND_OK) {
